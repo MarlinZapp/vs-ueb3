@@ -1,6 +1,9 @@
 package paxos;
 
 public enum MessageType {
-    REQUEST,
-    ANSWER
+    PREPARE_REQUEST,
+    PREPARE_ANSWER,
+    ACCEPT_REQUEST,
+    ACCEPT_ACK,
+    LEARN
 }

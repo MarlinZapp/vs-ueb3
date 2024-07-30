@@ -13,24 +13,22 @@ public class Fish extends Node {
 
     /* acceptor values */
 
-    // don't accept proposals lower than this number
-    private AtomicInteger proposalThreshold = new AtomicInteger(0);
-    // highest accepted proposal number
-    private AtomicInteger activeProposalNumber = new AtomicInteger(-1);
-    // value (direction) of the proposal with the highest accepted proposal number
-    private AtomicInteger activeProposalValue = new AtomicInteger(-1);
+    // don't accept proposals with proposal number lower than this number
+    private AtomicInteger acceptThreshold = new AtomicInteger(0);
+    // accepted proposal with the highest proposal number
+    private Proposal acceptedProposal;
 
     /* proposer values */
 
-    // the value (direction) that this proposer wants to propose
-    private AtomicInteger proposalValue = new AtomicInteger(-1);
+    // the proposal this proposer wants to propose
+    private Proposal proposal;
     // the number of other proposals that have been received after the prepare call
     private AtomicInteger reveicedProposals = new AtomicInteger(0);
     private AtomicInteger highestReceivedProposalNumber = new AtomicInteger(-1);
 
     /* general fish stuff */
 
-    private Swarm swarm;
+    protected Swarm swarm;
     private String name;
     private Direction direction;
 
@@ -41,6 +39,10 @@ public class Fish extends Node {
         this.direction = Direction.FRONT;
     }
 
+    public String getName() {
+        return this.name;
+    }
+
     @Override
     public void engage() {
         new Behaviour().start();
@@ -49,11 +51,9 @@ public class Fish extends Node {
 
     private void sendPrepareRequest() {
         Message m = new Message();
-        m.addHeader("step", PaxosStep.PREPARE.name());
-        m.addHeader("type", MessageType.REQUEST.name());
+        m.addHeader("type", MessageType.PREPARE_REQUEST.name());
         m.addHeader("sender-name", name);
-        m.add("proposal-number", swarm.proposal.getAndIncrement());
-        // sending to the majority would be enough but let's send it to every other fish
+        m.add("proposal-number", proposal.getNumber());
         for (String fish : swarm.getFishNames()) {
             try {
                 send(m, fish);
@@ -65,14 +65,12 @@ public class Fish extends Node {
     }
 
     private void handlePrepareRequest(int proposalNumber, String senderName) {
-        this.proposalThreshold.set(proposalNumber);
+        this.acceptThreshold.set(proposalNumber);
         Message m = new Message();
-        m.addHeader("step", PaxosStep.PREPARE.name());
-        m.addHeader("type", MessageType.ANSWER.name());
-        int value = this.activeProposalValue.get();
-        if (value != -1) {
-            m.add("proposal-number", this.activeProposalNumber.get());
-            m.add("proposal-value", value);
+        m.addHeader("type", MessageType.PREPARE_ANSWER.name());
+        if (this.acceptedProposal != null) {
+            m.add("proposal-number", this.acceptedProposal.getNumber());
+            m.add("proposal-value", this.acceptedProposal.getValue().name());
         }
         sendBlindly(m, senderName);
     }
@@ -81,28 +79,22 @@ public class Fish extends Node {
         int received = reveicedProposals.incrementAndGet();
         if (swarm.isMajority(received)) {
             sendAcceptRequest();
-            // reset proposer values
-            proposalValue.set(-1);
-            reveicedProposals.set(0);
         }
     }
 
     private void handlePrepareResponse(int proposalNumber, Direction proposalValue) {
         if (proposalNumber > highestReceivedProposalNumber.get()) {
             highestReceivedProposalNumber.set(proposalNumber);
-            this.proposalValue.set(proposalValue.asInt());
+            this.proposal.setValue(proposalValue);
         }
         handlePrepareResponse();
     }
 
     private void sendAcceptRequest() {
-        Direction direction = Direction.fromInt(proposalValue.get());
         Message m = new Message();
-        m.addHeader("step", PaxosStep.ACCEPT.name());
-        m.addHeader("type", MessageType.REQUEST.name());
-        m.add("direction", direction.name());
-        m.add("proposal-id", swarm.proposal.getAndIncrement());
-        // sending to the majority would be enough but let's send it to every other fish
+        m.addHeader("type", MessageType.ACCEPT_REQUEST.name());
+        m.add("proposal-number", proposal.getNumber());
+        m.add("proposal-value", proposal.getValue().name());
         for (String fish : swarm.getFishNames()) {
             try {
                 send(m, fish);
@@ -113,11 +105,33 @@ public class Fish extends Node {
         }
     }
 
-    private void accept(MessageType type, Direction direction, int proposalNumber) {
-        if (proposalNumber < this.proposalThreshold.get()) {
+    private void handleAcceptRequest(Proposal proposal) {
+        if (proposal.getNumber() < this.acceptThreshold.get()) {
             // optional : send special message to sender that he is too late
             return;
         }
+        Message m = new Message();
+        m.addHeader("type", MessageType.ACCEPT_ACK.name());
+        m.add("proposal-number", proposal.getNumber());
+        m.add("proposal-value", proposal.getValue().name());
+        for (String learner : swarm.getLearnerNames()) {
+            sendBlindly(m, learner);
+        }
+    }
+
+    protected void changeDirection(Direction direction) {
+        System.out.print(name + ": I'm now swimming in direction " + direction.name());
+        this.direction = direction;
+
+        // reset swarm proposal counter
+        swarm.proposal.set(0);
+        // reset proposer values
+        acceptThreshold = new AtomicInteger(0);
+        acceptedProposal = null;
+        // reset acceptor values
+        proposal = null;
+        reveicedProposals = new AtomicInteger(0);
+        highestReceivedProposalNumber = new AtomicInteger(-1);
     }
 
     private class Communication extends Thread {
@@ -125,35 +139,29 @@ public class Fish extends Node {
         public void run() {
             while (true) {
                 Message m = receive();
-                String step = m.getHeader().get("step");
-                if (step == PaxosStep.PREPARE.name()) {
-                    String type = m.getHeader().get("type");
-                    if (type == null) {
-                        throw new MissingMessageArgumentException("Missing message type header.");
-                    } else if (type == MessageType.REQUEST.name()) {
-                        int proposalNumber = m.queryInteger("proposal-number");
-                        String senderName = m.queryHeader("sender-name");
-                        handlePrepareRequest(proposalNumber, senderName);
-                    } else if (type == MessageType.ANSWER.name()) {
-                        String proposalValue = m.query("proposal-value");
-                        if (proposalValue == null) {
-                            handlePrepareResponse();
-                        } else {
-                            int proposalNumber = m.queryInteger("proposal-number");
-                            handlePrepareResponse(proposalNumber, Direction.valueOf(proposalValue));
-                        }
-                    }
-                } else if (step == PaxosStep.ACCEPT.name()) {
-                    String type = m.getHeader().get("type");
-                    if (type == null) {
-                        throw new MissingMessageArgumentException("Missing message type header.");
+                String type = m.getHeader().get("type");
+                if (type == null) {
+                    throw new MissingMessageArgumentException("Missing message type header.");
+                } else if (type == MessageType.PREPARE_REQUEST.name()) {
+                    String senderName = m.queryHeader("sender-name");
+                    int proposalNumber = m.queryInteger("proposal-number");
+                    handlePrepareRequest(proposalNumber, senderName);
+                } else if (type == MessageType.PREPARE_ANSWER.name()) {
+                    String proposalValue = m.query("proposal-value");
+                    if (proposalValue == null) {
+                        handlePrepareResponse();
                     } else {
-                        String dirName = m.getPayload().get("direction");
-                        int proposalNumber = m.queryInteger("proposal-id");
-                        accept(MessageType.valueOf(type), Direction.valueOf(dirName), proposalNumber);
+                        int proposalNumber = m.queryInteger("proposal-number");
+                        handlePrepareResponse(proposalNumber, Direction.valueOf(proposalValue));
                     }
-                } else {
-                    throw new MissingMessageArgumentException("Missing paxos step header.");
+                } else if (type == MessageType.ACCEPT_REQUEST.name()) {
+                    String dirName = m.getPayload().get("proposal-value");
+                    int proposalNumber = m.queryInteger("proposal-number");
+                    handleAcceptRequest(new Proposal(proposalNumber, Direction.valueOf(dirName)));
+                } else if (type == MessageType.LEARN.name()) {
+                    String dirName = m.getPayload().get("direction");
+                    Direction newDirection = Direction.valueOf(dirName);
+                    changeDirection(newDirection);
                 }
             }
         }
@@ -174,10 +182,10 @@ public class Fish extends Node {
                 if (change.isEmpty()) {
                     // swimming happily in current direction
                 } else {
-                    Direction direction = change.get();
+                    Direction newDirection = change.get();
                     // only start proposal if none is active
-                    if (proposalValue.get() == -1) {
-                        proposalValue.set(direction.asInt());
+                    if (proposal == null && direction != newDirection) {
+                        proposal = new Proposal(swarm.proposal.getAndIncrement(), newDirection);
                         sendPrepareRequest();
                     }
                 }
@@ -197,9 +205,5 @@ public class Fish extends Node {
             }
             return Optional.empty();
         }
-    }
-
-    public String getName() {
-        return this.name;
     }
 }
