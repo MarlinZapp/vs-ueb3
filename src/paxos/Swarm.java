@@ -31,7 +31,7 @@ public class Swarm {
     }
 
     public boolean isMajority(int num) {
-        return num > fishes.size();
+        return num > fishes.size() / 2 + 1;
     }
 
     public List<String> getLearnerNames() {

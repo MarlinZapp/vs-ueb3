@@ -110,6 +110,7 @@ public class Fish extends Node {
             // optional : send special message to sender that he is too late
             return;
         }
+        acceptedProposal = proposal;
         Message m = new Message();
         m.addHeader("type", MessageType.ACCEPT_ACK.name());
         m.add("proposal-number", proposal.getNumber());
@@ -120,7 +121,12 @@ public class Fish extends Node {
     }
 
     protected void changeDirection(Direction direction) {
-        System.out.print(name + ": I'm now swimming in direction " + direction.name());
+        // acceptedProposal == null means we have already entered this function since the accept
+        // this function can still be called multiple times if the handleAcceptRequest() function is called again
+        if (acceptedProposal == null) {
+            return;
+        }
+        System.out.println(name + ": I'm now swimming to the " + direction);
         this.direction = direction;
 
         // reset swarm proposal counter
@@ -140,6 +146,7 @@ public class Fish extends Node {
             while (true) {
                 Message m = receive();
                 String type = m.getHeader().get("type");
+                // System.out.println(type);
                 if (type == null) {
                     throw new MissingMessageArgumentException("Missing message type header.");
                 } else if (type == MessageType.PREPARE_REQUEST.name()) {
@@ -186,6 +193,7 @@ public class Fish extends Node {
                     // only start proposal if none is active
                     if (proposal == null && direction != newDirection) {
                         proposal = new Proposal(swarm.proposal.getAndIncrement(), newDirection);
+                        System.out.println(name + " wants to swim " + newDirection);
                         sendPrepareRequest();
                     }
                 }
