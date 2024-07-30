@@ -9,17 +9,36 @@ import java.util.stream.Collectors;
 public class Swarm {
 
     private ArrayList<Fish> fishes;
-    public AtomicInteger decision = new AtomicInteger(0);
+    // subset of fishes that spread decisions
+    private ArrayList<Learner> learners;
+    public AtomicInteger proposal = new AtomicInteger(0);
 
     public Swarm(int howMuchIsTheFish) {
         fishes = new ArrayList<Fish>(howMuchIsTheFish);
+        int amountLearners = howMuchIsTheFish / 10 + 1;
+        learners = new ArrayList<Learner>(amountLearners);
         Set<String> names = FishNameGenerator.generateUniqueNames(howMuchIsTheFish);
+        int i = 0;
         for (String name : names) {
-            fishes.add(new Fish(this, name));
+            if (i++ < amountLearners) {
+                Learner fish = new Learner(this, name);
+                learners.add(fish);
+                fishes.add(fish);
+            } else {
+                fishes.add(new Fish(this, name));
+            }
         }
     }
 
-    public List<String> getNames() {
+    public boolean isMajority(int num) {
+        return num > fishes.size();
+    }
+
+    public List<String> getLearnerNames() {
+        return learners.stream().map(fish -> fish.getName()).collect(Collectors.toList());
+    }
+
+    public List<String> getFishNames() {
         return fishes.stream().map(fish -> fish.getName()).collect(Collectors.toList());
     }
 
