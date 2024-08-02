@@ -6,6 +6,6 @@
 			<attribute name="module" value="true"/>
 		</attributes>
 	</classpathentry>
-	<classpathentry kind="lib" path="/home/marlin/Documents/Studium/8.Sem/vs/ueb3/lib/sim4da-v2.jar" sourcepath="/home/marlin/Documents/Studium/8.Sem/vs/sim4da-v2/src"/>
+	<classpathentry kind="lib" path="lib/sim4da-v2.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
