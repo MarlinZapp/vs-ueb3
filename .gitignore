@@ -1,2 +1,4 @@
 /bin/
 *.log
+res.txt
+.classpath

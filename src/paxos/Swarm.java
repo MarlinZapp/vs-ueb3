@@ -12,6 +12,7 @@ public class Swarm {
     // subset of fishes that spread decisions
     private ArrayList<Learner> learners;
     public AtomicInteger proposal = new AtomicInteger(0);
+    public AtomicInteger decisionNumber = new AtomicInteger(0);
 
     public Swarm(int howMuchIsTheFish) {
         fishes = new ArrayList<Fish>(howMuchIsTheFish);

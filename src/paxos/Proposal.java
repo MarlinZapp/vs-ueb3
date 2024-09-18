@@ -5,11 +5,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Proposal {
 
     private final AtomicInteger number;
+    private final AtomicInteger decisionNumber;
     private volatile Direction value;
 
-    public Proposal(int number, Direction value) {
+    public Proposal(int number, Direction value, int decisionNumber) {
         this.number = new AtomicInteger(number);
+        this.decisionNumber = new AtomicInteger(decisionNumber);
         this.value = value;
+    }
+
+    // Get the decision number value
+    public int getDecisionNumber() {
+        return decisionNumber.get();
     }
 
     // Get the number value
@@ -36,6 +43,7 @@ public class Proposal {
     @Override
     public String toString() {
         return "Proposal{" +
+                "decision number=" +decisionNumber +
                 "number=" + number +
                 ", value=" + value +
                 '}';
