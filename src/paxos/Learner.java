@@ -17,11 +17,9 @@ public class Learner extends Fish {
     @Override
     public void engage() {
         super.engage();
-        new Learning().start();
-        new Learning().start();
-        new Learning().start();
-        new Learning().start();
-        new Learning().start();
+        Learning learning = new Learning();
+        learning.setDaemon(true);
+        learning.start();
     }
 
     @Override

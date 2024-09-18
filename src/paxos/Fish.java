@@ -48,8 +48,12 @@ public class Fish extends Node {
 
     @Override
     public void engage() {
-        new Behaviour().start();
-        new Communication().start();
+        Behaviour behaviour = new Behaviour();
+        behaviour.setDaemon(true);
+        behaviour.start();
+        Communication communication = new Communication();
+        communication.setDaemon(true);
+        communication.start();
     }
 
     private void sendPrepareRequest() {
@@ -158,7 +162,7 @@ public class Fish extends Node {
             lastExecutedDecision.set(decisionNumber);
         }
 
-        System.out.println(name + ": I'm now swimming to " + direction);
+        System.out.println("Decision " + decisionNumber + ": " + name + " is now swimming " + direction + ".");
         this.direction = direction;
 
         // reset swarm proposal counter
@@ -248,9 +252,8 @@ public class Fish extends Node {
         @Override
         public void run() {
             while (true) {
-                int secondsJustSwimming = random.nextInt(10);
                 try {
-                    Thread.sleep(secondsJustSwimming * 10);
+                    Thread.sleep(random.nextInt(Simulation.NEW_DECISION_TIMER_MILLIS_MAX));
                 } catch (InterruptedException e) {
                     System.out.println(name + " has been interrupted in stupidly swimming.");
                     e.printStackTrace();
