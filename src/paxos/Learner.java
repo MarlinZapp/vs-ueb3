@@ -17,7 +17,7 @@ public class Learner extends Fish {
     @Override
     public void engage() {
         super.engage();
-        new Receiver().start();
+        new Learning().start();
     }
 
     @Override
@@ -45,7 +45,7 @@ public class Learner extends Fish {
         }
     }
 
-    private class Receiver extends Thread {
+    private class Learning extends Thread {
         @Override
         public void run() {
             while (true) {
