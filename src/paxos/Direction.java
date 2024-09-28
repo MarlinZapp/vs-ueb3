@@ -1,10 +1,10 @@
 package paxos;
 
 public enum Direction {
-    FRONT(0),
+    FORWARD(0),
     LEFT(1),
     RIGHT(2),
-    BACK(3);
+    BACKWARD(3);
 
     private final int value;
 
@@ -19,13 +19,13 @@ public enum Direction {
     public static Direction oppositeFromInt(int value) {
         switch (value) {
         case 0:
-            return Direction.BACK;
+            return Direction.BACKWARD;
         case 1:
             return Direction.RIGHT;
         case 2:
             return Direction.LEFT;
         case 3:
-            return Direction.FRONT;
+            return Direction.FORWARD;
         default:
             throw new IllegalArgumentException("Out of enum range: " + value);
         }

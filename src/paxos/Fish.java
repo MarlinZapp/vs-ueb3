@@ -45,7 +45,7 @@ public class Fish extends Node {
         super(name);
         this.swarm = swarm;
         this.name = name;
-        this.direction = Direction.FRONT;
+        this.direction = Direction.FORWARD;
 
         // Create a thread pool with numWorkers threads
         ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();

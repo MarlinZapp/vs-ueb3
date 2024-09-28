@@ -12,7 +12,7 @@ public class Simulation {
     public static double DANGER_CHANCE = 0.01;
     // a fish will swim in this direction
     public static double FOOD_OCCURENCE = 0.05;
-    // each fish wants a new decision after this a random amount of milliseconds between these two values
+    // each fish wants a new decision after a random amount of milliseconds between these two values
     public static int NEW_DECISION_TIMER_MILLIS_MIN = 20;
     public static int NEW_DECISION_TIMER_MILLIS_MAX = 500;
 
