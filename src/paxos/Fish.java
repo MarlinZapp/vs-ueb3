@@ -2,6 +2,10 @@ package paxos;
 
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.oxoo2a.sim4da.Message;
@@ -31,6 +35,8 @@ public class Fish extends Node {
 
     /* general fish stuff */
 
+    protected BlockingQueue<Message> messageQueue = new LinkedBlockingQueue<Message>();
+
     protected Swarm swarm;
     protected String name;
     private Direction direction;
@@ -40,6 +46,13 @@ public class Fish extends Node {
         this.swarm = swarm;
         this.name = name;
         this.direction = Direction.FRONT;
+
+        // Create a thread pool with numWorkers threads
+        ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
+        // Start worker threads
+        for (int i = 0; i < 16; i++) {
+            threadPool.submit(this::processMessages);
+        }
     }
 
     public String getName() {
@@ -86,15 +99,26 @@ public class Fish extends Node {
             m.add("proposal-value", this.acceptedProposal.getValue().name());
         }
         System.out
-                .println(name + " promises to accept no proposals with numbers lower than " + proposalNumber + ".");
-        sendBlindly(m, senderName);
+                .println(name + " promises " + senderName + " to accept no proposals with numbers lower than "
+                        + proposalNumber + ".");
+        try {
+            send(m, senderName);
+        } catch (UnknownNodeException e) {
+            e.printStackTrace();
+        }
     }
 
     private void handlePrepareResponse(int decisionNumber) {
         if (proposal == null) {
+            if (Simulation.verbose) {
+                System.out.println(name + " received a prepare response but has no active proposal!");
+            }
             return;
         }
         int received = receivedProposals.incrementAndGet();
+        if (Simulation.verbose) {
+            System.out.println(name + " received " + received + " promises!");
+        }
         if (swarm.isMajority(received)) {
             System.out.println(name + " sends accept request for swimming " + proposal.getValue() + ".");
             sendAcceptRequest(decisionNumber);
@@ -103,6 +127,7 @@ public class Fish extends Node {
 
     private void handlePrepareResponse(int proposalNumber, Direction proposalValue, int decisionNumber) {
         if (proposal == null) {
+            System.out.println(name + " received a prepare response but has no active proposal!");
             return;
         }
         if (proposalNumber > highestReceivedProposalNumber.get()) {
@@ -150,7 +175,14 @@ public class Fish extends Node {
         m.add("proposal-number", proposal.getNumber());
         m.add("proposal-value", proposal.getValue().name());
         for (String learner : swarm.getLearnerNames()) {
-            sendBlindly(m, learner);
+            if (Simulation.verbose) {
+                System.out.println(name + " send ACCEPT_ACK to " + learner);
+            }
+            try {
+                send(m, learner);
+            } catch (UnknownNodeException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -181,68 +213,11 @@ public class Fish extends Node {
         public void run() {
             while (true) {
                 Message m = receive();
-                new Thread(() -> handleMessage(m)).start();
-            }
-        }
-
-        private void handleMessage(Message m) {
-
-            String type = m.getHeader().get("type");
-            String senderName = m.queryHeader("sender-name");
-            int decisionNumber = m.queryHeaderInteger("decision-number");
-
-            if (type == null) {
-                throw new MissingMessageArgumentException("Missing message type header.");
-            } else if (type == MessageType.LEARN.name()) {
-                String dirName = m.getPayload().get("direction");
-                String proposalNumberValue = m.getPayload().get("proposal-number");
-                Direction newDirection = Direction.valueOf(dirName);
-                int proposalNumber = Integer.parseInt(proposalNumberValue);
-                if (Simulation.verbose) {
-                    System.out.println(name + " received LEARN message for proposal with number " + proposalNumber
-                            + " and value " + dirName + " from " + senderName + ".");
-                }
-                changeDirection(newDirection, proposalNumber, decisionNumber);
-            } else {
-                if (decisionNumber < swarm.decisionNumber.get()) {
-                    // message from old decision -> ignore
-                    return;
-                }
-
-                if (type == MessageType.PREPARE_REQUEST.name()) {
-                    int proposalNumber = m.queryInteger("proposal-number");
-                    if (Simulation.verbose) {
-                        System.out.println(name + " received PREPARE_REQUEST from " + senderName + ".");
-                    }
-                    handlePrepareRequest(proposalNumber, senderName, decisionNumber);
-                } else if (type == MessageType.PREPARE_ANSWER.name()) {
-                    String proposalValue = m.query("proposal-value");
-                    if (proposalValue == null) {
-                        if (Simulation.verbose) {
-                            System.out
-                                    .println(name
-                                            + " received PREPARE_ANSWER without proposal value and number from "
-                                            + senderName + ".");
-                        }
-                        handlePrepareResponse(decisionNumber);
-                    } else {
-                        int proposalNumber = m.queryInteger("proposal-number");
-                        if (Simulation.verbose) {
-                            System.out.println(name + " received PREPARE_ANSWER with proposal value "
-                                    + proposalValue
-                                    + " and proposal number " + proposalNumber + " from " + senderName + ".");
-                        }
-                        handlePrepareResponse(proposalNumber, Direction.valueOf(proposalValue), decisionNumber);
-                    }
-                } else if (type == MessageType.ACCEPT_REQUEST.name()) {
-                    String dirName = m.getPayload().get("proposal-value");
-                    int proposalNumber = m.queryInteger("proposal-number");
-                    if (Simulation.verbose) {
-                        System.out.println(
-                                name + " received ACCEPT_REQUEST for proposal with number " + proposalNumber
-                                        + " and value " + dirName + " from " + senderName + ".");
-                    }
-                    handleAcceptRequest(new Proposal(proposalNumber, Direction.valueOf(dirName), decisionNumber));
+                try {
+                    messageQueue.put(m);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt(); // Handle interruption
+                    System.out.println("Failed to enqueue message: " + e.getMessage());
                 }
             }
         }
@@ -253,7 +228,10 @@ public class Fish extends Node {
         public void run() {
             while (true) {
                 try {
-                    Thread.sleep(random.nextInt(Simulation.NEW_DECISION_TIMER_MILLIS_MAX));
+                    int sleep = random.nextInt(
+                            Simulation.NEW_DECISION_TIMER_MILLIS_MAX - Simulation.NEW_DECISION_TIMER_MILLIS_MIN)
+                            + Simulation.NEW_DECISION_TIMER_MILLIS_MIN;
+                    Thread.sleep(sleep);
                 } catch (InterruptedException e) {
                     System.out.println(name + " has been interrupted in stupidly swimming.");
                     e.printStackTrace();
@@ -267,8 +245,9 @@ public class Fish extends Node {
                     if (proposal == null && direction != newDirection) {
                         proposal = new Proposal(swarm.proposal.getAndIncrement(), newDirection,
                                 swarm.decisionNumber.get());
-                        System.out.println(name + " wants to swim " + newDirection + " (proposal number is "
-                                + proposal.getNumber() + ").");
+                        System.out.println(
+                                name + " wants to swim " + newDirection + " (proposal number is "
+                                        + proposal.getNumber() + ").");
                         sendPrepareRequest();
                     }
                 }
@@ -287,6 +266,84 @@ public class Fish extends Node {
                 return Optional.of(Direction.fromInt(where));
             }
             return Optional.empty();
+        }
+    }
+
+    private void processMessages() {
+        try {
+            while (true) {
+                // Take a message from the queue (this blocks if the queue is empty)
+                Message message = messageQueue.take();
+                handleMessage(message);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // Reset interruption status
+            System.out.println("Worker thread interrupted");
+        }
+    }
+
+    protected void handleMessage(Message m) {
+
+        String type = m.getHeader().get("type");
+        String senderName = m.queryHeader("sender-name");
+        int decisionNumber = m.queryHeaderInteger("decision-number");
+
+        if (type == null) {
+            throw new MissingMessageArgumentException("Missing message type header.");
+        } else if (type == MessageType.LEARN.name()) {
+            String dirName = m.getPayload().get("direction");
+            String proposalNumberValue = m.getPayload().get("proposal-number");
+            Direction newDirection = Direction.valueOf(dirName);
+            int proposalNumber = Integer.parseInt(proposalNumberValue);
+            if (Simulation.verbose) {
+                System.out.println(name + " received LEARN message for proposal with number " + proposalNumber
+                        + " and value " + dirName + " from " + senderName + ".");
+            }
+            changeDirection(newDirection, proposalNumber, decisionNumber);
+        } else {
+            if (decisionNumber < swarm.decisionNumber.get()) {
+                // message from old decision -> ignore
+                if (Simulation.verbose) {
+                    System.out.println(name + " received an old message of type " + type);
+                }
+                return;
+            }
+
+            if (type == MessageType.PREPARE_REQUEST.name()) {
+                int proposalNumber = m.queryInteger("proposal-number");
+                if (Simulation.verbose) {
+                    System.out.println(name + " received PREPARE_REQUEST from " + senderName + ".");
+                }
+                handlePrepareRequest(proposalNumber, senderName, decisionNumber);
+            } else if (type == MessageType.PREPARE_ANSWER.name()) {
+                String proposalValue = m.query("proposal-value");
+                if (proposalValue == null) {
+                    if (Simulation.verbose) {
+                        System.out
+                                .println(name
+                                        + " received PREPARE_ANSWER without proposal value and number from "
+                                        + senderName + ".");
+                    }
+                    handlePrepareResponse(decisionNumber);
+                } else {
+                    int proposalNumber = m.queryInteger("proposal-number");
+                    if (Simulation.verbose) {
+                        System.out.println(name + " received PREPARE_ANSWER with proposal value "
+                                + proposalValue
+                                + " and proposal number " + proposalNumber + " from " + senderName + ".");
+                    }
+                    handlePrepareResponse(proposalNumber, Direction.valueOf(proposalValue), decisionNumber);
+                }
+            } else if (type == MessageType.ACCEPT_REQUEST.name()) {
+                String dirName = m.getPayload().get("proposal-value");
+                int proposalNumber = m.queryInteger("proposal-number");
+                if (Simulation.verbose) {
+                    System.out.println(
+                            name + " received ACCEPT_REQUEST for proposal with number " + proposalNumber
+                                    + " and value " + dirName + " from " + senderName + ".");
+                }
+                handleAcceptRequest(new Proposal(proposalNumber, Direction.valueOf(dirName), decisionNumber));
+            }
         }
     }
 }

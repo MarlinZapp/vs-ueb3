@@ -17,9 +17,6 @@ public class Learner extends Fish {
     @Override
     public void engage() {
         super.engage();
-        Learning learning = new Learning();
-        learning.setDaemon(true);
-        learning.start();
     }
 
     @Override
@@ -52,8 +49,10 @@ public class Learner extends Fish {
                                                             // increment the decision count
                 }
             }
-            System.out.println(
-                    "Learner " + name + " reached a majority of proposals for " + proposal.getValue() + ".");
+            if (Simulation.verbose) {
+                System.out.println(
+                        "Learner " + name + " reached a majority of proposals for " + proposal.getValue() + ".");
+            }
             Message m = new Message();
             m.addHeader("decision-number", proposal.getDecisionNumber());
             m.addHeader("type", MessageType.LEARN.name());
@@ -66,7 +65,9 @@ public class Learner extends Fish {
         }
     }
 
-    private void handleMessage(Message m) {
+    @Override
+    protected void handleMessage(Message m) {
+        super.handleMessage(m);
         String type = m.getHeader().get("type");
         String senderName = m.queryHeader("sender-name");
         if (type == null) {
@@ -82,16 +83,6 @@ public class Learner extends Fish {
             }
             handleAcceptAcknowledgement(
                     new Proposal(proposalNumber, Direction.valueOf(dirName), decisionNumber));
-        }
-    }
-
-    private class Learning extends Thread {
-        @Override
-        public void run() {
-            while (true) {
-                Message m = receive();
-                new Thread(() -> handleMessage(m)).start();
-            }
         }
     }
 }
