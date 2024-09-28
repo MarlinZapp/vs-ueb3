@@ -16,7 +16,7 @@ public class Swarm {
 
     public Swarm(int howMuchIsTheFish) {
         fishes = new ArrayList<Fish>(howMuchIsTheFish);
-        int amountLearners = howMuchIsTheFish;
+        int amountLearners = howMuchIsTheFish / 10 + 1;
         learners = new ArrayList<Learner>(amountLearners);
         Set<String> names = FishNameGenerator.generateUniqueNames(howMuchIsTheFish);
         int i = 0;

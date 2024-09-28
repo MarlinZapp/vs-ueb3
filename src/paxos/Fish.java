@@ -47,9 +47,7 @@ public class Fish extends Node {
         this.name = name;
         this.direction = Direction.FORWARD;
 
-        // Create a thread pool with numWorkers threads
         ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
-        // Start worker threads
         for (int i = 0; i < 16; i++) {
             threadPool.submit(this::processMessages);
         }
@@ -116,11 +114,9 @@ public class Fish extends Node {
             return;
         }
         int received = receivedProposals.incrementAndGet();
-        if (Simulation.verbose) {
-            System.out.println(name + " received " + received + " promises!");
-        }
         if (swarm.isMajority(received)) {
             System.out.println(name + " sends accept request for swimming " + proposal.getValue() + ".");
+            // will be called multiple times but that's okay
             sendAcceptRequest(decisionNumber);
         }
     }
@@ -162,12 +158,14 @@ public class Fish extends Node {
             // optional : send special message to sender that he is too late
             return;
         }
-        if (acceptedProposal != null) {
-            // accept only one proposal
-            return;
+        synchronized (this) {
+            if (acceptedProposal != null) {
+                // accept only one proposal
+                return;
+            }
+            System.out.println(name + " accepted proposal " + proposal.getNumber() + ".");
+            acceptedProposal = proposal;
         }
-        System.out.println(name + " accepted proposal " + proposal.getNumber() + ".");
-        acceptedProposal = proposal;
         Message m = new Message();
         m.addHeader("type", MessageType.ACCEPT_ACK.name());
         m.addHeader("sender-name", name);
